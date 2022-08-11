@@ -1,7 +1,7 @@
 <?php
 /*
 jsTypeChecking.php by Gustav Lindberg
-https://github.com/Gustav-Lindberg/JsTypeChecking.php
+https://github.com/GustavLindberg99/JsTypeChecking.php
 */
 
 function jsTypeCheck(string $code): string{
