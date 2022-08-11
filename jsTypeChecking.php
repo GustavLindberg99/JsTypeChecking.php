@@ -1,6 +1,6 @@
 <?php
 /*
-jsTypeChecking.php by Gustav Lindberg
+jsTypeChecking.php by Gustav Lindberg version 1.1.0
 https://github.com/GustavLindberg99/JsTypeChecking.php
 */
 
