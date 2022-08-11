@@ -28,6 +28,10 @@ function foo(a, b, c){
 }
 ```
 
+Unlike complete languages like Typescript, this is only a very simple extension of standard Javascript, which has a few advantages:
+- Only minimal changes are made to your code when compiling it to standard Javascript, which makes it easier to use the browser's debugger.
+- The PHP script is relatively fast, which can be necessary on servers with limited capacity.
+
 
 # Setup
 
@@ -94,10 +98,10 @@ foo(/./);    //OK
 foo(3);    //Will throw a type error
 ```
 
-You are not required to do type checking on all parameters. For example, in the following code, the second argument must be a `RegExp`, but the first argument can be any type:
+You are not required to do type checking on all parameters. For example, in the following code, the first argument must be a `RegExp`, but the second argument can be any type:
 
 ```javascript
-function foo(a, RegExp b){
+function foo(RegExp a, b){
     //some code
 }
 
@@ -125,7 +129,7 @@ foo(new String("Hello World!"));    //Error
 
 ### Nullable arguments
 
-By default, passing `null` as a typed argument will throw an error:
+By default, passing `null` or `undefined` as a typed argument will throw an error:
 
 ```javascript
 function foo(String bar){
@@ -133,9 +137,10 @@ function foo(String bar){
 }
  
 foo(null);    //Error
+foo(undefined);    //Error
 ```
 
-If you want to allow a specific argument to be `null`, you can write `nullable` before the type:
+If you want to allow a specific argument to be `null` or `undefined`, you can write `nullable` before the type:
 
 ```javascript
 function foo(nullable String bar){
@@ -143,7 +148,20 @@ function foo(nullable String bar){
 }
 
 foo(null);    //OK
+foo(undefined);    //OK
 foo("Hello World!");    //Still OK
+```
+
+If you want to allow the argument to be `null` but *not* `undefined`, you can use `strict nullable`:
+
+```javascript
+function foo(strict nullable String bar){
+    //some code
+}
+
+foo(null);    //OK
+foo(undefined);    //Error
+foo("Hello World!");    //OK
 ```
 
 
