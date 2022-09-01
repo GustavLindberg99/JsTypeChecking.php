@@ -217,7 +217,7 @@ function jsTypeCheck(string $code): string{
                                 break;
                         }
                         if($contentsIsImplicit){
-                            $typeChecking .= "\nfor(let i = 0; i < $variable.length; i++){\n    const a = $variable\[i\];\n    if($contentsTypeChecking){\n        $variable\[i\] = ";
+                            $typeChecking .= "\n$variable = $variable.slice();\nfor(let i = 0; i < $variable.length; i++){\n    const a = $variable\[i\];\n    if($contentsTypeChecking){\n        $variable\[i\] = ";
                             switch($type){
                                 case "String":
                                 case "Number":
