@@ -1,6 +1,6 @@
 <?php
 /*
-jsTypeChecking.php by Gustav Lindberg version 1.1.0
+jsTypeChecking.php by Gustav Lindberg version 1.2.0
 https://github.com/GustavLindberg99/JsTypeChecking.php
 */
 
@@ -115,7 +115,7 @@ function jsTypeCheck(string $code): string{
                     else if($code[$j] == ')' && $stringDelimiter == null){
                         $numberOfParentheses--;
                     }
-                    else if($numberOfParentheses == 1 && $stringDelimiter == null && preg_match("/^(?:[^\w$])((?:(?:strict\s+)?nullable\s*)?[\w$]+(?:\s*\[\s*(?:(?:strict\s+)?nullable\s+)?[\w$]+\s*\])?)\s+([\w$]+)/", substr($code, $j - 1), $variableWithType)){
+                    else if($numberOfParentheses == 1 && $stringDelimiter == null && preg_match("/^(?:[^\w$])((?:implicit\s+)?(?:(?:strict\s+)?nullable\s+)?[\w$]+(?:\s*\[\s*(?:implicit\s+)?(?:(?:strict\s+)?nullable\s+)?[\w$]+\s*\])?)\s+([\w$]+)/", substr($code, $j - 1), $variableWithType)){
                         if(empty(array_intersect($variableWithType, $reservedKeywords))){
                             $variablesWithTypes[$variableWithType[2]] = $variableWithType[1];
                             $code = substr_replace($code, $variableWithType[2], $j, strlen($variableWithType[0]) - 1);
@@ -127,21 +127,30 @@ function jsTypeCheck(string $code): string{
                 //Add if conditions for each typed parameter to throw a type error if the wrong type is passed
                 $typeChecking = "";
                 foreach($variablesWithTypes as $variable => $type){
+                    $isImplicit = preg_match("/^implicit\s/", $type);
+                    if($isImplicit){
+                        $type = preg_replace("/^implicit\s+/", "", $type);
+                    }
                     $isNullable = preg_match("/^(strict\s+)?nullable\s/", $type);
                     $isStrictNullable = preg_match("/^strict\s+nullable\s/", $type);
                     if($isNullable){
-                        $type = preg_replace("/^(strict\s+)?nullable\s*/", "", $type);
+                        $type = preg_replace("/^(strict\s+)?nullable\s+/", "", $type);
                     }
                     $contentsType = null;
+                    $contentsIsImplicit = false;
                     $contentsIsNullable = false;
                     $contentsIsStrictNullable = false;
-                    if(preg_match("/^Array\s*\[\s*((?:nullable\s+)?[\w$]+)\s*\]/", $type, $contentsTypeMatches)){
+                    if(preg_match("/^Array\s*\[\s*((?:implicit\s+)?(?:(?:strict\s+)?nullable\s+)?[\w$]+)\s*\]/", $type, $contentsTypeMatches)){
                         $type = "Array";
                         $contentsType = $contentsTypeMatches[1];
+                        $contentsIsImplicit = preg_match("/^implicit\s/", $contentsType);
+                        if($contentsIsImplicit){
+                            $type = preg_replace("/^implicit\s+/", "", $type);
+                        }
                         $contentsIsNullable = preg_match("/^(strict\s+)?nullable\s/", $contentsType);
                         $contentsIsStrictNullable = preg_match("/^strict\s+nullable\s/", $contentsType);
                         if($contentsIsNullable){
-                            $contentsType = preg_replace("/^(strict\s+)?nullable\s*/", "", $contentsType);
+                            $contentsType = preg_replace("/^(strict\s+)?nullable\s+/", "", $contentsType);
                         }
                     }
                     $typeChecking .= "\nif(";
@@ -162,16 +171,34 @@ function jsTypeCheck(string $code): string{
                             $typeChecking .= "!($variable instanceof $type)";
                             break;
                     }
-                    $typeChecking .= "){\n    throw TypeError(\"Expected parameter $variable to be of type $type";
-                    if($isNullable){
-                        $typeChecking .= " or null";
-                        if(!$isStrictNullable){
-                            $typeChecking .= "/undefined";
+                    if($isImplicit){
+                        switch($type){
+                            case "String":
+                            case "Number":
+                            case "Boolean":
+                            case "Symbol":
+                                $typeChecking .= "){\n    $variable = $type($variable);\n}\n";
+                                break;
+                            case "Array":
+                                $typeChecking .= "){\n    $variable = [...$variable];\n}\n";
+                                break;
+                            default:
+                                $typeChecking .= "){\n    $variable = new $type($variable);\n}\n";
+                                break;
                         }
                     }
-                    $typeChecking .= ", got \" + $variable?.constructor?.name);\n}\n";
+                    else{
+                        $typeChecking .= "){\n    throw TypeError(\"Expected parameter $variable to be of type $type";
+                        if($isNullable){
+                            $typeChecking .= " or null";
+                            if(!$isStrictNullable){
+                                $typeChecking .= "/undefined";
+                            }
+                        }
+                        $typeChecking .= ", got \" + $variable?.constructor?.name);\n}\n";
+                    }
                     if($contentsType != null){
-                        $contentsTypeChecking = "a => ";
+                        $contentsTypeChecking = "";
                         if($contentsIsStrictNullable){
                             $contentsTypeChecking .= "a !== null && ";
                         }
@@ -183,20 +210,40 @@ function jsTypeCheck(string $code): string{
                             case "Number":
                             case "Boolean":
                             case "Symbol":
-                                $contentsTypeChecking .= "a?.constructor != $contentsType";
+                                $contentsTypeChecking .= "typeof(a) != '" . strtolower($contentsType) + "'";
                                 break;
                             default:
                                 $contentsTypeChecking .= "!(a instanceof $contentsType)";
                                 break;
                         }
-                        $typeChecking .= "\nif($variable?.some?.($contentsTypeChecking)){\n    throw TypeError(\"Expected parameter $variable to only contain values of type $contentsType";
-                        if($contentsIsNullable){
-                            $typeChecking .= " or null";
-                            if($contentsIsStrictNullable){
-                                $typeChecking .= "/undefined";
+                        if($contentsIsImplicit){
+                            $typeChecking .= "\nfor(let i = 0; i < $variable.length; i++){\n    const a = $variable\[i\];\n    if($contentsTypeChecking){\n        $variable\[i\] = ";
+                            switch($type){
+                                case "String":
+                                case "Number":
+                                case "Boolean":
+                                case "Symbol":
+                                    $typeChecking .= "$type($variable);";
+                                    break;
+                                case "Array":
+                                    $typeChecking .= "[...$variable];";
+                                    break;
+                                default:
+                                    $typeChecking .= "new $type($variable);";
+                                    break;
                             }
+                            $typeChecking .= "\n    }\n}";
                         }
-                        $typeChecking .= ", got \" + $variable?.find?.($contentsTypeChecking)?.constructor?.name);\n}\n";
+                        else{
+                            $typeChecking .= "\nif($variable?.some?.(a => $contentsTypeChecking)){\n    throw TypeError(\"Expected parameter $variable to only contain values of type $contentsType";
+                            if($contentsIsNullable){
+                                $typeChecking .= " or null";
+                                if($contentsIsStrictNullable){
+                                    $typeChecking .= "/undefined";
+                                }
+                            }
+                            $typeChecking .= ", got \" + $variable?.find?.(a => $contentsTypeChecking)?.constructor?.name);\n}\n";
+                        }
                     }
                 }
                 $code = substr_replace($code, $typeChecking, $j + strlen($declarationEndMatch[0]), 0);
