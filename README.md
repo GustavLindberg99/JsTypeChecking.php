@@ -265,6 +265,88 @@ foo(bar);
 ```
 
 
+### Implicit conversions
+
+If you want to convert the argument to the correct type instead of throwing an error, you can write `implicit` before the type:
+
+```javascript
+function foo(implicit String bar){
+    console.log(bar);
+}
+
+foo({});    //Prints '[object Object]' (since the argument was implicitly converted to a string)
+```
+
+The implicit conversions work the following way:
+- If the argument is an instance of the specified type or an instance of a subclass of the specified type, no type conversion will be done.
+- If the type is `implicit String`, `implicit Number`, `implicit Boolean` or `implicit Symbol`, the argument will be converted using `String(arg)`, `Number(arg)`, `Boolean(arg)` or `Symbol(arg)` respectively.
+- If the type is `implicit Array`, the argument will be converted using `[...arg]`. Note that this will throw an error if the argument isn't iterable.
+- Otherwise the argument will be converted using `new Type(arg)`. Note that this might throw an error depending on what's inside the constructor of `Type`.
+
+Note that if a reference type is converted to another type, the reference will be broken *only* if a type conversion is needed:
+
+```javascript
+class Foo{
+    constructor(Number x){this.x = x;}
+}
+
+class Bar{
+    constructor(Foo foo){this.x = foo.x;}
+}
+
+function test(implicit Foo foo){
+    foo.x = 3;
+}
+
+let foo = new Foo(1);
+test(foo);
+console.log(foo.x);    //3, foo was passed by reference since no type conversion was needed
+
+let bar = new Bar(1);
+test(bar);
+console.log(bar.x);    //1, the argument was implicitly converted to a new Foo object, the original Bar object remained untouched
+```
+
+#### Using `implicit` with null arguments
+
+If you use `implicit` together with `nullable` or `strict nullable`, `implicit` must come first:
+
+```javascript
+function foo(implicit nullable Number bar){}    //OK
+function foo(nullable implicit Number bar){}    //Not OK, won't be processed and will result in a syntax error
+```
+
+If you pass `null` or `undefined` as an argument of type `implicit nullable Type`, no type conversion will be done. If you pass `null` or `undefined` as an argument of type `implicit Type` (without `nullable`), it will be converted to `Type` as described above.
+
+#### Using `implicit` with arrays
+
+If an argument is of the type `implicit Array[Type]`, it will first be converted to an array using `[...arg]` and then it will check whether all arguments are of type `Type`.
+
+If an argument is of the type `Array[implicit Type]`, it will first check that the argument is an array (and throw an error if it's not), and then will convert all its elements to `Type` as described above. If an argument is of the type `Array[implicit Type]`, the array will always be copied and the reference will be broken, regardless of whether or not any type conversions are done:
+
+```javascript
+function foo(Array[implicit Number] bar){
+    foo[0] = 4;
+}
+
+let bar = [1, 2, 3];
+foo(bar);
+console.log(bar);    //[1, 2, 3], the array was copied when passed as an argument
+```
+
+This only happens when the argument is of type `Array[implicit Type]`, not when it's of type `Array[Type]`:
+
+```javascript
+function foo(Array[Number] bar){
+    foo[0] = 4;
+}
+
+let bar = [1, 2, 3];
+foo(bar);
+console.log(bar);    //[4, 2, 3], the array was passed as reference as usual
+```
+
+
 ### Arrow functions
 
 Type checking in arrow functions is only supported with the syntax `(arguments) => {body}`. jsTypeChecking.php won't process arrow function with other syntaxes (such as `argument => {body}` or `(arguments) => body`), which means that attempting to add type specifiers to these arrow functions will result in the browser throwing a syntax error. The reason for this is because supporting this would make the code more complicated and more likely to contain bugs.
