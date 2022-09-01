@@ -82,6 +82,12 @@ function foo(a, b, c){
 
 Note that the type checking is done at runtime. If you try to supply a parameter of an incorrect type, the PHP script will not warn you, but you will get a Javascript `TypeError` when you try to run it.
 
+In practice, you will probably want to put your code in a seperate .js file, in which case you will probably want to combine the `jsTypeCheck` function with PHP's built-in `file_get_contents`:
+
+```php
+echo jsTypeCheck(file_get_contents("file.js"));
+```
+
 
 ## Client side code
 
@@ -343,7 +349,7 @@ function foo(Array[Number] bar){
 
 let bar = [1, 2, 3];
 foo(bar);
-console.log(bar);    //[4, 2, 3], the array was passed as reference as usual
+console.log(bar);    //[4, 2, 3], the array was passed by reference as usual
 ```
 
 
