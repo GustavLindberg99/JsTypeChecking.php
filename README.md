@@ -171,7 +171,9 @@ foo("Hello World!");    //OK
 ```
 
 
-### Arrays
+### Arrays and other containers
+
+#### Arrays
 
 You can require an argument to be an array just like you can with any other type:
 
@@ -206,6 +208,10 @@ foo([1, 2, 3]);    //OK
 foo([1, 2, null]);    //OK
 ```
 
+You can't use type checking in nested arrays, things like `Array[Array[Type]]` won't be processed (though `Array[Array]` works perfectly fine).
+
+#### Rest parameters
+
 You can also do type checking on [rest parameters](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/rest_parameters). To do so, you need to put `Array[Type]` between the `...` and the name of the parameter:
 
 ```javascript
@@ -215,6 +221,96 @@ function foo(... Array[Number] bar){
 
 foo(1, 2, 3, 4);
 ```
+
+#### Sets
+
+Sets work just like arrays, you can (but don't have to) require the contents of the set to be of a certain type by using `Set[Type]`:
+
+```javascript
+function foo(Set[Number] bar){
+    //some code
+}
+
+foo(new Set([1, 2, 3]));    //OK
+foo(new Set(["Hello", "World"]));    //Error, passing a set of strings when expecting a set of numbers
+foo(new Set([1, "Hello World!"]));    //Error, this set contains a string, but all elements of the set are expected to be numbers
+```
+
+#### Objects
+
+If you use objects as maps where the keys are strings, you can use `Object[Type]` to check that all the values are of type `Type`:
+
+```javascript
+function foo(Object[Number] bar){
+    //some code
+}
+
+foo({a: 1, b: 2, c: 3});    //OK
+foo({a: "Hello", b: "World"});    //Error, the values are strings but should be numbers
+foo({a: 1, b: "Hello World!"});    //Error, one of the values is a string, but all values are expected to be numbers
+```
+
+If you give your object methods, be careful to make them non-enumerable. For example, this will throw an error:
+
+```javascript
+function foo(Object[Number] bar){
+    //some code
+}
+
+foo({a: 1, b: 2, c: 3, someMethod: function(){}});    //Error, one of the values is a function, but all values are expected to be numbers
+```
+
+For this to work, you need to make the methods non-enumerable, for example using `Object.defineProperty()`:
+
+```javascript
+function foo(Object[Number] bar){
+    //some code
+}
+
+let obj = {a: 1, b: 2, c: 3};
+Object.defineProperty(obj, 'someMethod', {
+    value: function(){}
+});
+foo(obj);    //OK, someMethod is not enumerable and won't be checked when checking that all values are numbers
+```
+
+Another thing to be aware of is that all classes inherit from `Object`, so type checking for `Object` won't prevent the argument from being of another object type:
+
+```javascript
+function foo(Object[Number] bar){
+    //some code
+}
+
+foo([1, 2, 3]);    //OK, arrays are objects
+foo([1, 2, 3, "Hello World!"]);    //Error, all the values should be numbers, but this array contains a string
+foo(new Set([1, 2, 3]));    //OK, sets are objects
+foo(new Set([1, 2, 3, "Hello World"]));    //OK, sets don't have any enumerable properties, so no type checking will be done on the contents
+foo(function(){});    //OK, functions are objects with no enumerable properties
+foo(3);    //Error, primitives aren't objects
+```
+
+#### Maps
+
+You want to make sure that the keys and values of a map are of specific types by using `Map[KeyType, ValueType]`:
+
+```javascript
+function foo(Map[String, Number] bar){
+    //some code
+}
+
+let myMap = new Map();
+myMap.set("Hello", 1);
+myMap.set("World", 2);
+foo(myMap);    //OK
+myMap.set(3, 4);
+foo(myMap);    //Error, we just added 3 as a key which is a number, but all keys should be strings
+
+let myOtherMap = new Map();
+myOtherMap.set("Hello", "World");
+foo(myOtherMap);    //Error, one of the values is a string, but all the values should be numbers
+```
+
+If you do type checking on maps like this, you have to specify both a key type and a value type, you can't specify one but not the other.
 
 
 ### Classes
@@ -289,7 +385,9 @@ The implicit conversions work the following way:
 - If the type is `implicit Array`, the argument will be converted using `[...arg]`. Note that this will throw an error if the argument isn't iterable.
 - Otherwise the argument will be converted using `new Type(arg)`. Note that this might throw an error depending on what's inside the constructor of `Type`.
 
-Note that if a reference type is converted to another type, the reference will be broken *only* if a type conversion is needed:
+You can't use `implicit` when checking the type of the contents of a container, things like `Array[implicit Type]` won't be processed. However, `implicit Array[Type]` works fine, it will first convert the argument to an array, and then check that all elements are of type `Type`. Sets, objects and maps work similarly.
+
+If a reference type is converted to another type, the reference will be broken *only* if a type conversion is needed:
 
 ```javascript
 class Foo{
@@ -313,8 +411,6 @@ test(bar);
 console.log(bar.x);    //1, the argument was implicitly converted to a new Foo object, the original Bar object remained untouched
 ```
 
-#### Using `implicit` with null arguments
-
 If you use `implicit` together with `nullable` or `strict nullable`, `implicit` must come first:
 
 ```javascript
@@ -323,34 +419,6 @@ function foo(nullable implicit Number bar){}    //Not OK, won't be processed and
 ```
 
 If you pass `null` or `undefined` as an argument of type `implicit nullable Type`, no type conversion will be done. If you pass `null` or `undefined` as an argument of type `implicit Type` (without `nullable`), it will be converted to `Type` as described above.
-
-#### Using `implicit` with arrays
-
-If an argument is of the type `implicit Array[Type]`, it will first be converted to an array using `[...arg]` and then it will check whether all arguments are of type `Type`.
-
-If an argument is of the type `Array[implicit Type]`, it will first check that the argument is an array (and throw an error if it's not), and then will convert all its elements to `Type` as described above. If an argument is of the type `Array[implicit Type]`, the array will always be copied and the reference will be broken, regardless of whether or not any type conversions are done:
-
-```javascript
-function foo(Array[implicit Number] bar){
-    foo[0] = 4;
-}
-
-let bar = [1, 2, 3];
-foo(bar);
-console.log(bar);    //[1, 2, 3], the array was copied when passed as an argument
-```
-
-This only happens when the argument is of type `Array[implicit Type]`, not when it's of type `Array[Type]`:
-
-```javascript
-function foo(Array[Number] bar){
-    foo[0] = 4;
-}
-
-let bar = [1, 2, 3];
-foo(bar);
-console.log(bar);    //[4, 2, 3], the array was passed by reference as usual
-```
 
 
 ### Arrow functions
