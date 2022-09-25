@@ -310,7 +310,7 @@ myOtherMap.set("Hello", "World");
 foo(myOtherMap);    //Error, one of the values is a string, but all the values should be numbers
 ```
 
-If you do type checking on maps like this, you have to specify both a key type and a value type, you can't specify one but not the other.
+If you do type checking on maps like this, you have to specify both a key type and a value type, you can't specify one but not the other (but you can specify neither by doing `function foo(Map bar){...}`).
 
 
 ### Classes
