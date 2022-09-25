@@ -1,6 +1,6 @@
 <?php
 /*
-jsTypeChecking.php by Gustav Lindberg version 1.2.0
+jsTypeChecking.php by Gustav Lindberg version 1.3.0
 https://github.com/GustavLindberg99/JsTypeChecking.php
 */
 
@@ -115,7 +115,7 @@ function jsTypeCheck(string $code): string{
                     else if($code[$j] == ')' && $stringDelimiter == null){
                         $numberOfParentheses--;
                     }
-                    else if($numberOfParentheses == 1 && $stringDelimiter == null && preg_match("/^(?:[^\w$])((?:implicit\s+)?(?:(?:strict\s+)?nullable\s+)?[\w$]+(?:\s*\[\s*(?:implicit\s+)?(?:(?:strict\s+)?nullable\s+)?[\w$]+\s*\])?)\s+([\w$]+)/", substr($code, $j - 1), $variableWithType)){
+                    else if($numberOfParentheses == 1 && $stringDelimiter == null && preg_match("/^(?:[^\w$])((?:implicit\s+)?(?:(?:strict\s+)?nullable\s+)?[\w$]+(?:\s*\[\s*(?:(?:strict\s+)?nullable\s+)?[\w$]+\s*(?:,\s*(?:(?:strict\s+)?nullable\s+)?[\w$]+\s*)?\])?)\s+([\w$]+)/", substr($code, $j - 1), $variableWithType)){
                         if(empty(array_intersect($variableWithType, $reservedKeywords))){
                             $variablesWithTypes[$variableWithType[2]] = $variableWithType[1];
                             $code = substr_replace($code, $variableWithType[2], $j, strlen($variableWithType[0]) - 1);
@@ -137,20 +137,27 @@ function jsTypeCheck(string $code): string{
                         $type = preg_replace("/^(strict\s+)?nullable\s+/", "", $type);
                     }
                     $contentsType = null;
-                    $contentsIsImplicit = false;
                     $contentsIsNullable = false;
                     $contentsIsStrictNullable = false;
-                    if(preg_match("/^Array\s*\[\s*((?:implicit\s+)?(?:(?:strict\s+)?nullable\s+)?[\w$]+)\s*\]/", $type, $contentsTypeMatches)){
-                        $type = "Array";
-                        $contentsType = $contentsTypeMatches[1];
-                        $contentsIsImplicit = preg_match("/^implicit\s/", $contentsType);
-                        if($contentsIsImplicit){
-                            $type = preg_replace("/^implicit\s+/", "", $type);
-                        }
+                    if(preg_match("/^(Array|Set|Object)\s*\[\s*((?:implicit\s+)?(?:(?:strict\s+)?nullable\s+)?[\w$]+)\s*\]/", $type, $contentsTypeMatches)){
+                        $type = $contentsTypeMatches[1];
+                        $contentsType = $contentsTypeMatches[2];
                         $contentsIsNullable = preg_match("/^(strict\s+)?nullable\s/", $contentsType);
                         $contentsIsStrictNullable = preg_match("/^strict\s+nullable\s/", $contentsType);
                         if($contentsIsNullable){
                             $contentsType = preg_replace("/^(strict\s+)?nullable\s+/", "", $contentsType);
+                        }
+                    }
+                    else if(preg_match("/^Map\s*\[\s*((?:implicit\s+)?(?:(?:strict\s+)?nullable\s+)?[\w$]+)\s*,\s*((?:implicit\s+)?(?:(?:strict\s+)?nullable\s+)?[\w$]+)\s*\]/", $type, $contentsTypeMatches)){
+                        $type = "Map";
+                        $contentsType = [$contentsTypeMatches[1], $contentsTypeMatches[2]];
+                        $contentsIsNullable = [preg_match("/^(strict\s+)?nullable\s/", $contentsType[0]), preg_match("/^(strict\s+)?nullable\s/", $contentsType[1])];
+                        $contentsIsStrictNullable = [preg_match("/^strict\s+nullable\s/", $contentsType[0]), preg_match("/^strict\s+nullable\s/", $contentsType[1])];
+                        if($contentsIsNullable[0]){
+                            $contentsType[0] = preg_replace("/^(strict\s+)?nullable\s+/", "", $contentsType[0]);
+                        }
+                        if($contentsIsNullable[1]){
+                            $contentsType[1] = preg_replace("/^(strict\s+)?nullable\s+/", "", $contentsType[1]);
                         }
                     }
                     $typeChecking .= "\nif(";
@@ -198,51 +205,74 @@ function jsTypeCheck(string $code): string{
                         $typeChecking .= ", got \" + $variable?.constructor?.name);\n}\n";
                     }
                     if($contentsType != null){
-                        $contentsTypeChecking = "";
-                        if($contentsIsStrictNullable){
-                            $contentsTypeChecking .= "a !== null && ";
+                        if($type == "Map"){
+                            $variableAsArray = "($variable && [...$variable])";
+                            foreach(["keys", "values"] as $index => $keysOrValues){
+                                $contentsTypeChecking = "";
+                                if($contentsIsStrictNullable[$index]){
+                                    $contentsTypeChecking .= "a[$index] !== null && ";
+                                }
+                                else if($contentsIsNullable[$index]){
+                                    $contentsTypeChecking .= "a[$index] != null && ";
+                                }
+                                switch($contentsType[$index]){
+                                    case "String":
+                                    case "Number":
+                                    case "Boolean":
+                                    case "Symbol":
+                                        $contentsTypeChecking .= "typeof(a[$index]) != '" . strtolower($contentsType[$index]) . "'";
+                                        break;
+                                    default:
+                                        $contentsTypeChecking .= "!(a[$index] instanceof " . $contentsType[$index] . ")";
+                                        break;
+                                }
+                                $typeChecking .= "\nif($variableAsArray?.some?.(a => $contentsTypeChecking)){\n    throw TypeError(\"Expected parameter $variable to only contain $keysOrValues of type " . $contentsType[$index];
+                                if($contentsIsNullable[$index]){
+                                    $typeChecking .= " or null";
+                                    if(!$contentsIsStrictNullable[$index]){
+                                        $typeChecking .= "/undefined";
+                                    }
+                                }
+                                $typeChecking .= ", got \" + $variableAsArray?.find?.(a => $contentsTypeChecking)[$index]?.constructor?.name);\n}\n";
+                            }
+                            
                         }
-                        else if($contentsIsNullable){
-                            $contentsTypeChecking .= "a != null && ";
-                        }
-                        switch($contentsType){
-                            case "String":
-                            case "Number":
-                            case "Boolean":
-                            case "Symbol":
-                                $contentsTypeChecking .= "typeof(a) != '" . strtolower($contentsType) + "'";
-                                break;
-                            default:
-                                $contentsTypeChecking .= "!(a instanceof $contentsType)";
-                                break;
-                        }
-                        if($contentsIsImplicit){
-                            $typeChecking .= "\n$variable = $variable.slice();\nfor(let i = 0; i < $variable.length; i++){\n    const a = $variable\[i\];\n    if($contentsTypeChecking){\n        $variable\[i\] = ";
-                            switch($type){
+                        else{
+                            $contentsTypeChecking = "";
+                            if($contentsIsStrictNullable){
+                                $contentsTypeChecking .= "a !== null && ";
+                            }
+                            else if($contentsIsNullable){
+                                $contentsTypeChecking .= "a != null && ";
+                            }
+                            switch($contentsType){
                                 case "String":
                                 case "Number":
                                 case "Boolean":
                                 case "Symbol":
-                                    $typeChecking .= "$type($variable);";
-                                    break;
-                                case "Array":
-                                    $typeChecking .= "[...$variable];";
+                                    $contentsTypeChecking .= "typeof(a) != '" . strtolower($contentsType) . "'";
                                     break;
                                 default:
-                                    $typeChecking .= "new $type($variable);";
+                                    $contentsTypeChecking .= "!(a instanceof $contentsType)";
                                     break;
                             }
-                            $typeChecking .= "\n    }\n}";
-                        }
-                        else{
-                            $typeChecking .= "\nif($variable?.some?.(a => $contentsTypeChecking)){\n    throw TypeError(\"Expected parameter $variable to only contain values of type $contentsType";
+                            if($type == "Array"){
+                                $variableAsArray = $variable;
+                            }
+                            else if($type == "Set"){
+                                $variableAsArray = "($variable && [...$variable])";
+                            }
+                            else if($type == "Object"){
+                                $variableAsArray = "($variable && Object.values($variable))";
+                            }
+                            $typeChecking .= "\nif($variableAsArray?.some?.(a => $contentsTypeChecking)){\n    throw TypeError(\"Expected parameter $variable to only contain values of type $contentsType";
                             if($contentsIsNullable){
                                 $typeChecking .= " or null";
-                                if($contentsIsStrictNullable){
+                                if(!$contentsIsStrictNullable){
                                     $typeChecking .= "/undefined";
                                 }
                             }
-                            $typeChecking .= ", got \" + $variable?.find?.(a => $contentsTypeChecking)?.constructor?.name);\n}\n";
+                            $typeChecking .= ", got \" + $variableAsArray?.find?.(a => $contentsTypeChecking)?.constructor?.name);\n}\n";
                         }
                     }
                 }
