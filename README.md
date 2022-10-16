@@ -385,6 +385,8 @@ The implicit conversions work the following way:
 - If the type is `implicit Array`, the argument will be converted using `[...arg]`. Note that this will throw an error if the argument isn't iterable.
 - Otherwise the argument will be converted using `new Type(arg)`. Note that this might throw an error depending on what's inside the constructor of `Type`.
 
+**Warning:** Using `implicit Function` is dangerous, since it will compile into `new Function(arg)` which is similar to `eval(arg)`.
+
 You can't use `implicit` when checking the type of the contents of a container, things like `Array[implicit Type]` won't be processed. However, `implicit Array[Type]` works fine, it will first convert the argument to an array, and then check that all elements are of type `Type`. Sets, objects and maps work similarly.
 
 If a reference type is converted to another type, the reference will be broken *only* if a type conversion is needed:
