@@ -1,6 +1,6 @@
 <?php
 /*
-jsTypeChecking.php by Gustav Lindberg version 1.3.0
+jsTypeChecking.php by Gustav Lindberg version 1.3.1
 https://github.com/GustavLindberg99/JsTypeChecking.php
 */
 
@@ -78,7 +78,7 @@ function jsTypeCheck(string $code): string{
             $depth--;
             $classDepths = array_diff($classDepths, [$depth]);
         }
-        if(preg_match("/^class\s+[\w$]+(\s+extends\s+[\w$]+)?\s*\{/", substr($code, $i), $classMatch)){
+        if(preg_match("/^class(\s+[\w$]+)?(\s+extends\s+[\w$]+)?\s*\{/", substr($code, $i))){
             $classDepths[] = $depth;
         }
 
