@@ -1,3 +1,5 @@
+# JsTypeChecking.php is deprecated in favor of [Typecheck.js](https://github.com/GustavLindberg99/Typecheck.js)
+
 # Overview
 
 jsTypeChecking.php is a PHP script that lets you do type checking on function arguments in Javascript as follows:
